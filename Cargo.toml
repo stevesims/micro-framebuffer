@@ -1,0 +1,10 @@
+[package]
+name = "micro_framebuffer"
+version = "0.1.0"
+edition = "2021"
+authors = ["Steve Sims <steve@stevesims.dev>"]
+license = "MIT"
+description = "A very simple framebuffer for embedded systems"
+keywords = ["embedded", "framebuffer", "graphics", "Agon Light", "vdp"]
+
+[dependencies]
