@@ -1,7 +1,7 @@
 // use std::ops::Index;
 
-pub trait PixelChunk {
-    type PixelType; // Add an associated type for the pixel type.
+pub trait PixelChunk: Copy + Clone + Default {
+    type PixelType: Clone;
 
     fn pixels() -> usize;
 
@@ -10,6 +10,24 @@ pub trait PixelChunk {
         Self: Sized; // Use the associated type for the return type.
 
     fn set_pixel(&mut self, index: usize, pixel: Self::PixelType);
+
+    fn fill_pixel(&mut self, pixel: Self::PixelType) {
+        for i in 0..Self::pixels() {
+            self.set_pixel(i, pixel.clone());
+        }
+    }
+
+    fn filled_pixel(pixel: Self::PixelType) -> Self
+    where
+        Self: Default + Sized,
+    {
+        let mut chunk = Self::default();
+        for i in 0..Self::pixels() {
+            let cloned_pixel = pixel.clone();
+            chunk.set_pixel(i, cloned_pixel);
+        }
+        chunk
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, Default)]
@@ -54,7 +72,7 @@ impl From<Pixel8> for u8 {
 // Pixel4 contains 2 pixels in a single byte
 // the first pixel is the high 4 bits, the second pixel is the low 4 bits
 // when used as an argument as a singular pixel, the pixel in the lowest 4 bits is used
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy, Default)]
 pub struct Pixel4 {
     pub value: u8,
 }
@@ -92,7 +110,7 @@ impl PixelChunk for Pixel4 {
 impl From<u8> for Pixel4 {
     #[inline]
     fn from(value: u8) -> Self {
-        // TODO is this correct?  arguably this should be value >> 4
+        // TODO consider whether this is correct.  arguably this should be value >> 4
         Pixel4 { value }
     }
 }
@@ -133,9 +151,9 @@ mod tests {
         assert_eq!(std::mem::size_of::<Vec<Pixel4>>(), 24);
 
         let px: Pixel4 = 0xF0.into();
-        let mut val = vec![px.clone(), px.clone(), px.clone()];
+        let mut val = vec![px, px, px];
         for _i in 0..24 {
-            val.push(px.clone());
+            val.push(px);
         }
 
         assert_eq!(std::mem::size_of_val(&val), 24);

@@ -4,12 +4,14 @@ use crate::pixel_formats::*;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PixelRow<T: PixelChunk> {
+    // TODO change pixels vector to be a kind of reference
+    // This will allow cheap cloning of the row
     pixels: Vec<T>,
     pad_left: usize,
     pad_right: usize,
 }
 
-impl<T: Copy + Default + PixelChunk> PixelRow<T> {
+impl<T: PixelChunk<PixelType = T>> PixelRow<T> {
     pub fn new(size: usize) -> PixelRow<T> {
         Self::new_with(size, Default::default())
     }
@@ -39,24 +41,62 @@ impl<T: Copy + Default + PixelChunk> PixelRow<T> {
         chunk.get_pixel(index % T::pixels())
     }
 
-    pub fn set_pixel(&mut self, index: usize, pixel: <T as PixelChunk>::PixelType) {
-        // TODO this needs to change to handle pixel chunks
+    // set a pixel - the `pixel` value will use the "default" pixel in the provided pixel chunk
+    pub fn set_pixel(&mut self, index: usize, pixel: T) {
         let chunk = self.pixels.get_mut(index / T::pixels()).unwrap();
         chunk.set_pixel(index % T::pixels(), pixel);
     }
 
-    pub fn fill_range(&mut self, _range: Range<usize>, _pixel: T) {
-        // this needs changing so that it understands pixel chunks
-        // it should fill as if the chunk is a single pixel (using only the first pixel in chunk)
-        // and can optimise by using a filled chunk
-        // for i in range {
-        //     self.set_pixel(i, pixel);
-        // }
+    pub fn fill_range(&mut self, range: Range<usize>, pixel: T) {
+        if T::pixels() == 1 || range.len() < (T::pixels() * 2) {
+            // fill can be simplistic
+            for i in range {
+                self.set_pixel(i, pixel);
+            }
+        } else {
+            // we can optimise our fill by using a filled chunk
+            let filled_chunk = T::filled_pixel(pixel);
+            let skip_front = range.start % T::pixels();
+            if skip_front > 0 {
+                // fill the front of the range
+                for i in range.start..range.start + skip_front {
+                    self.set_pixel(i, pixel);
+                }
+            }
+            let skip_back = range.end % T::pixels();
+            if skip_back > 0 {
+                // fill the back of the range
+                for i in range.end - skip_back..range.end {
+                    self.set_pixel(i, pixel);
+                }
+            }
+            for i in range.start + skip_front..range.end - skip_back {
+                self.pixels[i / T::pixels()] = filled_chunk;
+            }
+        }
     }
 
-    pub fn fill_range_with_chunk(&mut self, _range: Range<usize>, _chunk: T) {
-        // fill should get aligned to chunk size
-        // should set individual pixels to align
+    pub fn fill_range_with_chunk(&mut self, range: Range<usize>, chunk: T) {
+        // fills a range with given chunk, where fill is aligned by chunk
+        let skip_front = range.start % T::pixels();
+        if skip_front > 0 {
+            // fill the front of the range
+            for i in range.start..range.start + skip_front {
+                let px = chunk.get_pixel(i % T::pixels()).unwrap();
+                self.set_pixel(i, px);
+            }
+        }
+        let skip_back = range.end % T::pixels();
+        if skip_back > 0 {
+            // fill the back of the range
+            for i in range.end - skip_back..range.end {
+                let px = chunk.get_pixel(i % T::pixels()).unwrap();
+                self.set_pixel(i, px);
+            }
+        }
+        for i in range.start + skip_front..range.end - skip_back {
+            self.pixels[i / T::pixels()] = chunk;
+        }
     }
 
     pub fn fill_range_with(&mut self, _range: Range<usize>, _new_pixels: &[T]) {
@@ -70,9 +110,10 @@ impl<T: Copy + Default + PixelChunk> PixelRow<T> {
         // }
     }
 
-    // fill with pixel, and fill with chunk
     pub fn fill_range_with_chunks(&mut self, _range: Range<usize>, _new_chunks: &[T]) {
         // TODO think this through properly
+        // what do we do about alignment?
+        // should we have two variants? one that aligns, and another that doesn't?
     }
 
     pub fn len(&self) -> usize {
@@ -169,40 +210,55 @@ mod tests {
         assert_eq!(row[0], 0.into());
         assert_eq!(row[1], 1.into());
         assert_eq!(row[2], 2.into());
+    }
 
+    #[test]
+    fn can_get_slice_from_pixelrow() {
+        let row: PixelRow<Pixel8> =
+            PixelRow::from_vec(vec![0.into(), 1.into(), 2.into(), 3.into(), 4.into()]);
         assert_eq!(row[1..4], [1.into(), 2.into(), 3.into()]);
     }
 
-    // #[test]
-    // fn can_get_slice_from_pixelrow() {
-    //     let row: PixelRow<u8> = PixelRow::from_vec(vec![0, 1, 2, 3, 4]);
-    //     assert_eq!(row[1..4], [1, 2, 3]);
-    // }
+    #[test]
+    fn can_set_a_pixel_in_a_pixelrow() {
+        let mut row: PixelRow<Pixel8> = PixelRow::from_vec(vec![0.into(), 1.into(), 2.into()]);
+        row.set_pixel(0, 3.into());
+        row.set_pixel(1, 4.into());
+        row.set_pixel(2, 5.into());
+        assert_eq!(row.pixels[0], 3.into());
+        assert_eq!(row.pixels[1], 4.into());
+        assert_eq!(row.pixels[2], 5.into());
 
-    // #[test]
-    // fn can_set_a_pixel_in_a_pixelrow() {
-    //     let mut row: PixelRow<u8> = PixelRow::from_vec(vec![0, 1, 2]);
-    //     row.set_pixel(0, 3);
-    //     row.set_pixel(1, 4);
-    //     row.set_pixel(2, 5);
-    //     assert_eq!(row.pixels[0], 3);
-    //     assert_eq!(row.pixels[1], 4);
-    //     assert_eq!(row.pixels[2], 5);
+        row[0] = 6.into();
+        assert_eq!(row.pixels[0], 6.into());
+    }
 
-    //     row[0] = 6;
-    //     assert_eq!(row.pixels[0], 6);
-    // }
+    #[test]
+    fn can_fill_range_of_a_pixelrow() {
+        let mut row: PixelRow<Pixel4> = PixelRow::new(7);
+        for i in 0..7 {
+            row.set_pixel(i, (i as u8).into());
+        }
 
-    // #[test]
-    // fn can_fill_range_of_a_pixelrow() {
-    //     let mut row: PixelRow<u8> = PixelRow::from_vec(vec![0, 1, 2, 3, 4]);
-    //     row.fill_range(1..4, 5);
-    //     assert_eq!(row.pixels[0], 0);
-    //     assert_eq!(row.pixels[1], 5);
-    //     assert_eq!(row.pixels[2], 5);
-    //     assert_eq!(row.pixels[3], 5);
-    //     assert_eq!(row.pixels[4], 4);
-    // }
+        row.fill_range(2..4, 13.into());
+        assert_eq!(row.pixel(0), Some(0.into()));
+        assert_eq!(row.pixel(1), Some(1.into()));
+        assert_eq!(row.pixel(2), Some(13.into()));
+        assert_eq!(row.pixel(3), Some(13.into()));
+        assert_eq!(row.pixel(4), Some(4.into()));
+        assert_eq!(row.pixel(5), Some(5.into()));
+        assert_eq!(row.pixel(6), Some(6.into()));
+
+        row.fill_range(1..5, 9.into());
+        assert_eq!(row.pixel(0), Some(0.into()));
+        assert_eq!(row.pixel(1), Some(9.into()));
+        assert_eq!(row.pixel(2), Some(9.into()));
+        assert_eq!(row.pixel(3), Some(9.into()));
+        assert_eq!(row.pixel(4), Some(9.into()));
+        assert_eq!(row.pixel(5), Some(5.into()));
+        assert_eq!(row.pixel(6), Some(6.into()));
+        assert_eq!(row.pad_right, 1);
+    }
 
     // #[test]
     // fn can_fill_range_with_multiple_pixels() {

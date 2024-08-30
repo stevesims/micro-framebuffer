@@ -10,7 +10,7 @@ pub struct FrameBuffer<T: PixelChunk> {
     rows: Vec<PixelRow<T>>,
 }
 
-impl<T: Copy + Default + PixelChunk> FrameBuffer<T> {
+impl<T: PixelChunk<PixelType = T>> FrameBuffer<T> {
     pub fn new(width: usize, height: usize) -> FrameBuffer<T> {
         FrameBuffer {
             width,
@@ -60,44 +60,45 @@ impl<T: PixelChunk> Index<Range<usize>> for FrameBuffer<T> {
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
+    use super::*;
+    use crate::pixel_formats::Pixel8;
 
-    // #[test]
-    // fn can_create_frame_buffer() {
-    //     let buffer: FrameBuffer<u8> = FrameBuffer::new(7, 3);
-    //     assert_eq!(buffer.rows.len(), 3);
-    //     assert_eq!(buffer.rows.len(), buffer.height);
-    //     for row in buffer.rows.iter() {
-    //         assert_eq!(row.len(), 7);
-    //         assert_eq!(row.len(), buffer.width);
-    //     }
-    // }
+    #[test]
+    fn can_create_frame_buffer() {
+        let buffer: FrameBuffer<Pixel8> = FrameBuffer::new(7, 3);
+        assert_eq!(buffer.rows.len(), 3);
+        assert_eq!(buffer.rows.len(), buffer.height);
+        for row in buffer.rows.iter() {
+            assert_eq!(row.len(), 7);
+            assert_eq!(row.len(), buffer.width);
+        }
+    }
 
-    // #[test]
-    // fn can_create_frame_buffer_with_pixel() {
-    //     let buffer: FrameBuffer<u8> = FrameBuffer::new_with(3, 3, 5);
-    //     for row in buffer.rows.iter() {
-    //         for i in 0..row.len() {
-    //             assert_eq!(row[i], 5);
-    //         }
-    //     }
-    // }
+    #[test]
+    fn can_create_frame_buffer_with_pixel() {
+        let buffer: FrameBuffer<Pixel8> = FrameBuffer::new_with(3, 3, 5.into());
+        for row in buffer.rows.iter() {
+            for i in 0..row.len() {
+                assert_eq!(row[i], 5.into());
+            }
+        }
+    }
 
-    // #[test]
-    // fn can_get_row() {
-    //     let buffer: FrameBuffer<u8> = FrameBuffer::new(3, 3);
-    //     assert_eq!(buffer.row(0).unwrap().len(), 3);
-    //     assert_eq!(buffer.row(1).unwrap().len(), 3);
-    //     assert_eq!(buffer.row(2).unwrap().len(), 3);
-    //     assert_eq!(buffer.row(3), None);
-    // }
+    #[test]
+    fn can_get_row() {
+        let buffer: FrameBuffer<Pixel8> = FrameBuffer::new(3, 3);
+        assert_eq!(buffer.row(0).unwrap().len(), 3);
+        assert_eq!(buffer.row(1).unwrap().len(), 3);
+        assert_eq!(buffer.row(2).unwrap().len(), 3);
+        assert_eq!(buffer.row(3), None);
+    }
 
-    // #[test]
-    // fn can_get_pixel() {
-    //     let buffer: FrameBuffer<u8> = FrameBuffer::new(3, 3);
-    //     assert_eq!(buffer.pixel(0, 0), Some(&0));
-    //     assert_eq!(buffer.pixel(1, 1), Some(&0));
-    //     assert_eq!(buffer.pixel(2, 2), Some(&0));
-    //     assert_eq!(buffer.pixel(3, 3), None);
-    // }
+    #[test]
+    fn can_get_pixel() {
+        let buffer: FrameBuffer<Pixel8> = FrameBuffer::new(3, 3);
+        assert_eq!(buffer.pixel(0, 0), Some(0.into()));
+        assert_eq!(buffer.pixel(1, 1), Some(0.into()));
+        assert_eq!(buffer.pixel(2, 2), Some(0.into()));
+        assert_eq!(buffer.pixel(3, 3), None);
+    }
 }
