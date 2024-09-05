@@ -1,6 +1,6 @@
 // use std::ops::Index;
 
-pub trait PixelChunk: Copy + Clone + Default {
+pub trait PixelChunk: Copy + Clone + Default + IntoIterator<Item = Self> {
     type PixelType: Clone;
 
     fn pixels() -> usize;
@@ -30,6 +30,21 @@ pub trait PixelChunk: Copy + Clone + Default {
     }
 }
 
+pub struct PixelChunkIterator<T: PixelChunk> {
+    chunk: T,
+    index: usize,
+}
+
+impl<T: PixelChunk> Iterator for PixelChunkIterator<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let pixel = self.chunk.get_pixel(self.index);
+        self.index += 1;
+        pixel
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy, Default)]
 pub struct Pixel8 {
     pub value: u8,
@@ -52,6 +67,18 @@ impl PixelChunk for Pixel8 {
 
     fn set_pixel(&mut self, _index: usize, pixel: Self::PixelType) {
         *self = pixel;
+    }
+}
+
+impl IntoIterator for Pixel8 {
+    type Item = Pixel8;
+    type IntoIter = PixelChunkIterator<Self>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        PixelChunkIterator {
+            chunk: self,
+            index: 0,
+        }
     }
 }
 
@@ -103,6 +130,18 @@ impl PixelChunk for Pixel4 {
                 self.value = (self.value & 0xF0) | (pixel.value & 0xF);
             }
             _ => {}
+        }
+    }
+}
+
+impl IntoIterator for Pixel4 {
+    type Item = Pixel4;
+    type IntoIter = PixelChunkIterator<Self>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        PixelChunkIterator {
+            chunk: self,
+            index: 0,
         }
     }
 }
@@ -182,5 +221,46 @@ mod tests {
     fn can_get_u8_from_pixel4() {
         let pixel = Pixel4 { value: 0xAB };
         assert_eq!(u8::from(pixel), 0xAB);
+    }
+
+    #[test]
+    fn can_iterate_over_pixel4() {
+        let pixel = Pixel4 { value: 0xAB };
+        let mut iter = pixel.into_iter();
+        assert_eq!(iter.next().unwrap().value, 0xA);
+        assert_eq!(iter.next().unwrap().value, 0xB);
+        assert_eq!(iter.next(), None);
+
+        // has the pixel been consumed?
+        let mut iter = pixel.into_iter();
+        assert_eq!(iter.next().unwrap().value, 0xA);
+        // as this works, it doesn't seem to have been :D
+
+        let mut test = 0xA;
+        for p in pixel {
+            assert_eq!(p.value, test);
+            test += 1;
+        }
+        assert_eq!(test, 0xC);
+    }
+
+    #[test]
+    fn can_iterate_over_pixel8() {
+        let pixel = Pixel8 { value: 0xAB };
+        let mut iter = pixel.into_iter();
+        assert_eq!(iter.next().unwrap().value, 0xAB);
+        assert_eq!(iter.next(), None);
+
+        // has the pixel been consumed?
+        let mut iter = pixel.into_iter();
+        assert_eq!(iter.next().unwrap().value, 0xAB);
+        // as this works, it doesn't seem to have been :D
+
+        let mut test = 0xAB;
+        for p in pixel {
+            assert_eq!(p.value, test);
+            test += 1;
+        }
+        assert_eq!(test, 0xAC);
     }
 }
