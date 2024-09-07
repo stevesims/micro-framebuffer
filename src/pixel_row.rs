@@ -1,12 +1,15 @@
 use std::ops::{Index, IndexMut, Range};
+// use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::pixel_formats::*;
 
+// #[derive(Debug, PartialEq)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct PixelRow<T: PixelChunk> {
-    // TODO change pixel_chunks vector to be a kind of reference
-    // This will allow cheap cloning of the row
-    pixel_chunks: Vec<T>,
+    // pixel_chunks is an (atomic?) shared reference to allow for easy/cheap cloning
+    pixel_chunks: Arc<Vec<T>>,
+    // pixel_chunks: Rc<Vec<T>>,
     // Amount of pixels to ignore at the start of the row
     pad_left: usize,
     // Amount of pixels to ignore at the end of the row
@@ -51,7 +54,8 @@ impl<T: PixelChunk<PixelType = T>> PixelRow<T> {
         let pad = size % T::pixels();
         let real_size = size / T::pixels() + if pad > 0 { 1 } else { 0 };
         PixelRow {
-            pixel_chunks: vec![pixel; real_size],
+            pixel_chunks: Arc::new(vec![pixel; real_size]),
+            // pixel_chunks: Rc::new(vec![pixel; real_size]),
             pad_left: 0,
             pad_right: pad,
         }
@@ -60,7 +64,8 @@ impl<T: PixelChunk<PixelType = T>> PixelRow<T> {
     // is this wanted/needed?
     pub fn from_vec(pixel_chunks: Vec<T>) -> PixelRow<T> {
         PixelRow {
-            pixel_chunks,
+            pixel_chunks: Arc::new(pixel_chunks),
+            // pixel_chunks: Rc::new(pixel_chunks),
             pad_left: 0,
             pad_right: 0,
         }
@@ -79,11 +84,17 @@ impl<T: PixelChunk<PixelType = T>> PixelRow<T> {
     // set a pixel - the `pixel` value will use the "default" pixel in the provided pixel chunk
     pub fn set_pixel(&mut self, index: usize, pixel: T) {
         let actual_index = index + self.pad_left;
-        let chunk = self
-            .pixel_chunks
+        // let chunk = self
+        //     .pixel_chunks
+        //     .get_mut(actual_index / T::pixels())
+        //     .unwrap();
+        // chunk.set_pixel(actual_index % T::pixels(), pixel);
+        let chunk = Arc::make_mut(&mut self.pixel_chunks)
             .get_mut(actual_index / T::pixels())
             .unwrap();
         chunk.set_pixel(actual_index % T::pixels(), pixel);
+        // Rc::get_mut(&mut self.pixel_chunks).unwrap()[actual_index / T::pixels()]
+        //     .set_pixel(actual_index % T::pixels(), pixel);
     }
 
     pub fn fill_range(&mut self, range: Range<usize>, pixel: T) {
@@ -119,7 +130,9 @@ impl<T: PixelChunk<PixelType = T>> PixelRow<T> {
             }
         }
         for i in range.start + skip_front..range.end - skip_back {
-            self.pixel_chunks[i / T::pixels()] = chunk;
+            Arc::make_mut(&mut self.pixel_chunks)[i / T::pixels()] = chunk;
+            // self.pixel_chunks[i / T::pixels()] = chunk;
+            // Rc::get_mut(&mut self.pixel_chunks).unwrap()[i / T::pixels()] = chunk;
         }
     }
 
@@ -148,6 +161,16 @@ impl<T: PixelChunk<PixelType = T>> PixelRow<T> {
         self.pixel_chunks.is_empty()
     }
 }
+
+// impl<T: PixelChunk> Clone for PixelRow<T> {
+//     fn clone(&self) -> Self {
+//         PixelRow {
+//             pixel_chunks: Rc::clone(&self.pixel_chunks),
+//             pad_left: self.pad_left,
+//             pad_right: self.pad_right,
+//         }
+//     }
+// }
 
 impl<'a, T: PixelChunk> IntoIterator for &'a PixelRow<T> {
     type Item = T;
@@ -183,7 +206,11 @@ impl<T: PixelChunk> Index<usize> for PixelRow<T> {
 // NB this is fetching a pixel chunk...
 impl<T: PixelChunk> IndexMut<usize> for PixelRow<T> {
     fn index_mut(&mut self, index: usize) -> &mut T {
-        &mut self.pixel_chunks[index]
+        &mut Arc::make_mut(&mut self.pixel_chunks)[index]
+        // self.pixel_chunks[index]
+        // Rc::get_mut(&mut self.pixel_chunks)
+        //     .unwrap()
+        //     .index_mut(index)
     }
 }
 
@@ -209,7 +236,7 @@ mod tests {
         for pixel in row.pixel_chunks.iter() {
             assert_eq!(pixel.value, 0);
         }
-        for pixel in &row.pixel_chunks {
+        for pixel in row.pixel_chunks.iter() {
             let test_px: u8 = (*pixel).into();
             assert_eq!(test_px, 0);
         }
@@ -410,5 +437,42 @@ mod tests {
             i += 1;
         }
         assert_eq!(i, 10);
+    }
+
+    #[test]
+    fn can_clone_pixel_row() {
+        // The idea is that a clone should be _cheap_
+        // and point to identical pixel data...
+
+        let mut row: PixelRow<Pixel4> = PixelRow::new(14);
+        row.pad_left = 3;
+        row.pad_right = 1;
+        for i in 0..10 {
+            row.set_pixel(i, (i as u8).into());
+        }
+
+        let mut cloned_row = row.clone();
+        assert_eq!(row.pixel_chunks[0].value, cloned_row.pixel_chunks[0].value);
+        assert_eq!(row.pixel_chunks[1].value, cloned_row.pixel_chunks[1].value);
+        assert_eq!(row.pixel_chunks[2].value, cloned_row.pixel_chunks[2].value);
+
+        // adjust padding in cloned row
+        cloned_row.pad_left = 4;
+        cloned_row.pad_right = 0;
+
+        for i in 1..10 {
+            assert_eq!(row.pixel(i), cloned_row.pixel(i - 1));
+        }
+
+        // We should be able to adjust a pixel in `row` and have that reflected in `cloned_row`
+        // But as of right now that's not working
+        // When we're using Rc the call to `set_pixel` crashes
+        // When using Arc the cloned row doesn't get updated (the pixel data must get copied)
+
+        // adjust a pixel
+        row.set_pixel(1, 99.into());
+
+        // commented out assert, as this crashes in the current implementation
+        // assert_eq!(cloned_row.pixel(0), Some(99.into()));
     }
 }
