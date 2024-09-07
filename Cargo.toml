@@ -5,6 +5,8 @@ edition = "2021"
 authors = ["Steve Sims <steve@stevesims.dev>"]
 license = "MIT"
 description = "A very simple framebuffer for embedded systems"
-keywords = ["embedded", "framebuffer", "graphics", "Agon Light", "vdp"]
+keywords = ["embedded", "framebuffer", "graphics", "AgonLight", "vdp"]
+homepage = "https://github.com/stevesims/micro-framebuffer"
+repository = "https://github.com/stevesims/micro-framebuffer"
 
 [dependencies]
